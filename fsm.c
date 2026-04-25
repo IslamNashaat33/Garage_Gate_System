@@ -38,6 +38,16 @@ static void ClearAutoAll(FsmContext *ctx)
     }
 }
 
+static void ClearDriverCommands(FsmContext *ctx)
+{
+    uint32_t idx = (uint32_t)CMD_SOURCE_DRIVER;
+
+    ctx->openHeld[idx] = false;
+    ctx->closeHeld[idx] = false;
+    ctx->autoActive[idx] = false;
+    ctx->autoDirection[idx] = GATE_MOTOR_STOP;
+}
+
 static void StopSafely(FsmContext *ctx, GateState targetState)
 {
     ctx->state = targetState;
@@ -130,6 +140,9 @@ void FSM_ProcessEvent(FsmContext *ctx, const FsmEvent *event, TickType_t nowTick
 
     if (event->type == FSM_EVENT_SAFETY_OBSTACLE)
     {
+        /* Safety preempts any pending/held driver intent immediately. */
+        ClearDriverCommands(ctx);
+
         if (ctx->motorDirection == GATE_MOTOR_CLOSE ||
             ctx->state == GATE_STATE_CLOSING)
         {

@@ -12,7 +12,9 @@
 #include "gpio.h"
 
 #define INPUT_QUEUE_LENGTH            (24U)
-#define EVENT_QUEUE_LENGTH            (24U)
+#define SAFETY_EVENT_QUEUE_LENGTH     (8U)
+#define SECURITY_EVENT_QUEUE_LENGTH   (24U)
+#define DRIVER_EVENT_QUEUE_LENGTH     (24U)
 #define DEBOUNCE_TICKS                pdMS_TO_TICKS(30U)
 #define ONE_TOUCH_MAX_TICKS           pdMS_TO_TICKS(250U)
 #define GATE_TASK_LOOP_TICKS          pdMS_TO_TICKS(10U)
@@ -32,7 +34,9 @@ typedef enum
 } ControlDirection;
 
 static QueueHandle_t g_inputQueue;
-static QueueHandle_t g_gateEventQueue;
+static QueueHandle_t g_safetyEventQueue;
+static QueueHandle_t g_securityEventQueue;
+static QueueHandle_t g_driverEventQueue;
 
 static SemaphoreHandle_t g_limitOpenSem;
 static SemaphoreHandle_t g_limitClosedSem;
@@ -51,6 +55,34 @@ static void GateControlTask(void *params);
 static void LedControlTask(void *params);
 static void SafetyTask(void *params);
 static void StatusTask(void *params);
+
+static bool IsDriverCommandEvent(const FsmEvent *event)
+{
+    if (event->source != CMD_SOURCE_DRIVER)
+    {
+        return false;
+    }
+
+    switch (event->type)
+    {
+        case FSM_EVENT_CMD_OPEN_PRESS:
+        case FSM_EVENT_CMD_OPEN_RELEASE:
+        case FSM_EVENT_CMD_CLOSE_PRESS:
+        case FSM_EVENT_CMD_CLOSE_RELEASE:
+        case FSM_EVENT_CMD_OPEN_AUTO:
+        case FSM_EVENT_CMD_CLOSE_AUTO:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static void PurgeQueuedDriverEvents(void)
+{
+    /* Obstacle handling invalidates queued driver intent to guarantee preemption. */
+    (void)xQueueReset(g_driverEventQueue);
+}
 
 static inline bool IsCommandButton(ButtonId button)
 {
@@ -116,17 +148,40 @@ static void QueueGateEvent(FsmEventType type, CommandSource source, TickType_t t
     event.source = source;
     event.tick = tick;
 
-    (void)xQueueSend(g_gateEventQueue, &event, 0U);
+    /*
+     * Route commands by source so GateControlTask can enforce
+     * strict processing priority: safety > security > driver.
+     */
+    if (source == CMD_SOURCE_SECURITY)
+    {
+        (void)xQueueSend(g_securityEventQueue, &event, 0U);
+    }
+    else if (source == CMD_SOURCE_DRIVER)
+    {
+        if (IsDriverCommandEvent(&event))
+        {
+            (void)xQueueSend(g_driverEventQueue, &event, 0U);
+        }
+    }
+    else
+    {
+        /* Conflict/system events from input side are treated above driver. */
+        (void)xQueueSend(g_securityEventQueue, &event, 0U);
+    }
 }
 
 static void CheckAndQueueConflict(TickType_t tick)
 {
-    bool anyOpenPressed = g_pressedState[CMD_SOURCE_DRIVER][DIR_OPEN] ||
-                          g_pressedState[CMD_SOURCE_SECURITY][DIR_OPEN];
-    bool anyClosePressed = g_pressedState[CMD_SOURCE_DRIVER][DIR_CLOSE] ||
-                           g_pressedState[CMD_SOURCE_SECURITY][DIR_CLOSE];
+    bool driverConflict = g_pressedState[CMD_SOURCE_DRIVER][DIR_OPEN] &&
+                          g_pressedState[CMD_SOURCE_DRIVER][DIR_CLOSE];
+    bool securityConflict = g_pressedState[CMD_SOURCE_SECURITY][DIR_OPEN] &&
+                            g_pressedState[CMD_SOURCE_SECURITY][DIR_CLOSE];
 
-    if (anyOpenPressed && anyClosePressed)
+    /*
+     * Cross-source overlap (security vs driver) is not a conflict.
+     * Security precedence is handled later in FSM source arbitration.
+     */
+    if (driverConflict || securityConflict)
     {
         QueueGateEvent(FSM_EVENT_CONFLICT, CMD_SOURCE_NONE, tick);
     }
@@ -212,6 +267,10 @@ static void InputTask(void *params)
             }
             else if (inputEvent.button == BUTTON_OBSTACLE)
             {
+                /*
+                 * Obstacle is signaled directly from ISR via
+                 * GPIO_RegisterObstacleSemaphore(). Keep this as fallback.
+                 */
                 (void)xSemaphoreGive(g_obstacleSem);
             }
         }
@@ -269,7 +328,18 @@ static void GateControlTask(void *params)
             FSM_ProcessEvent(&g_fsm, &event, nowTick);
         }
 
-        if (xQueueReceive(g_gateEventQueue, &event, GATE_TASK_LOOP_TICKS) == pdTRUE)
+        /* Drain all pending safety events first on every cycle. */
+        while (xQueueReceive(g_safetyEventQueue, &event, 0U) == pdTRUE)
+        {
+            FSM_ProcessEvent(&g_fsm, &event, nowTick);
+        }
+
+        /* Then handle at most one security event before any driver event. */
+        if (xQueueReceive(g_securityEventQueue, &event, 0U) == pdTRUE)
+        {
+            FSM_ProcessEvent(&g_fsm, &event, nowTick);
+        }
+        else if (xQueueReceive(g_driverEventQueue, &event, GATE_TASK_LOOP_TICKS) == pdTRUE)
         {
             FSM_ProcessEvent(&g_fsm, &event, nowTick);
         }
@@ -329,7 +399,10 @@ static void SafetyTask(void *params)
         if (xSemaphoreTake(g_obstacleSem, portMAX_DELAY) == pdTRUE)
         {
             event.tick = xTaskGetTickCount();
-            (void)xQueueSendToFront(g_gateEventQueue, &event, 0U);
+            PurgeQueuedDriverEvents();
+
+            /* Dedicated safety queue is always serviced before any command queue. */
+            (void)xQueueSend(g_safetyEventQueue, &event, 0U);
         }
     }
 }
@@ -351,7 +424,9 @@ bool Tasks_Init(void)
     uint32_t j;
 
     g_inputQueue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(GpioInputEvent));
-    g_gateEventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(FsmEvent));
+    g_safetyEventQueue = xQueueCreate(SAFETY_EVENT_QUEUE_LENGTH, sizeof(FsmEvent));
+    g_securityEventQueue = xQueueCreate(SECURITY_EVENT_QUEUE_LENGTH, sizeof(FsmEvent));
+    g_driverEventQueue = xQueueCreate(DRIVER_EVENT_QUEUE_LENGTH, sizeof(FsmEvent));
 
     g_limitOpenSem = xSemaphoreCreateBinary();
     g_limitClosedSem = xSemaphoreCreateBinary();
@@ -359,7 +434,9 @@ bool Tasks_Init(void)
     g_stateMutex = xSemaphoreCreateMutex();
 
     if ((g_inputQueue == 0) ||
-        (g_gateEventQueue == 0) ||
+        (g_safetyEventQueue == 0) ||
+        (g_securityEventQueue == 0) ||
+        (g_driverEventQueue == 0) ||
         (g_limitOpenSem == 0) ||
         (g_limitClosedSem == 0) ||
         (g_obstacleSem == 0) ||
@@ -383,6 +460,7 @@ bool Tasks_Init(void)
     }
 
     GPIO_RegisterInputQueue(g_inputQueue);
+    GPIO_RegisterObstacleSemaphore(g_obstacleSem);
 
     if (xTaskCreate(SafetyTask, "Safety", configMINIMAL_STACK_SIZE + 96U, 0, PRIORITY_SAFETY_TASK, 0) != pdPASS)
     {

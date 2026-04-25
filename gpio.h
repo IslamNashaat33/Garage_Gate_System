@@ -6,6 +6,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "semphr.h"
 
 #include "fsm.h"
 
@@ -30,6 +31,7 @@ typedef struct
 
 void GPIO_HardwareInit(void);
 void GPIO_RegisterInputQueue(QueueHandle_t queueHandle);
+void GPIO_RegisterObstacleSemaphore(SemaphoreHandle_t semHandle);
 
 void GPIO_SetGreenLed(bool on);
 void GPIO_SetRedLed(bool on);

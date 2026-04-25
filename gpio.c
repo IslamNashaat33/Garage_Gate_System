@@ -13,6 +13,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "semphr.h"
 
 #define LED_RED_PORT            GPIO_PORTF_BASE
 #define LED_RED_PIN             GPIO_PIN_1
@@ -36,6 +37,7 @@
 #define OBSTACLE_PIN            GPIO_PIN_3
 
 static QueueHandle_t g_inputQueueFromIsr;
+static SemaphoreHandle_t g_obstacleSemFromIsr;
 
 static inline bool IsAsserted(uint32_t portBase, uint8_t pinMask)
 {
@@ -117,6 +119,11 @@ void GPIO_RegisterInputQueue(QueueHandle_t queueHandle)
     g_inputQueueFromIsr = queueHandle;
 }
 
+void GPIO_RegisterObstacleSemaphore(SemaphoreHandle_t semHandle)
+{
+    g_obstacleSemFromIsr = semHandle;
+}
+
 void GPIO_SetGreenLed(bool on)
 {
     GPIOPinWrite(LED_GREEN_PORT, LED_GREEN_PIN, on ? LED_GREEN_PIN : 0U);
@@ -188,6 +195,7 @@ void GPIOB_Handler(void)
 void GPIOE_Handler(void)
 {
     uint32_t status = GPIOIntStatus(LIMIT_OPEN_PORT, true);
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     GPIOIntClear(LIMIT_OPEN_PORT, status);
 
     if ((status & LIMIT_OPEN_PIN) != 0U)
@@ -202,6 +210,12 @@ void GPIOE_Handler(void)
 
     if ((status & OBSTACLE_PIN) != 0U)
     {
-        PushIsrEvent(BUTTON_OBSTACLE, OBSTACLE_PORT, OBSTACLE_PIN);
+        /* Route obstacle directly to SafetyTask to avoid input-queue latency. */
+        if (g_obstacleSemFromIsr != 0)
+        {
+            (void)xSemaphoreGiveFromISR(g_obstacleSemFromIsr, &xHigherPriorityTaskWoken);
+        }
     }
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
