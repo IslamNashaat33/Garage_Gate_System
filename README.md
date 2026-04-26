@@ -2,6 +2,8 @@
 
 This template implements an event-driven, multitasking architecture for a smart parking gate controller.
 
+Hardware access is implemented using CMSIS/device-register programming for TM4C123 (no TivaWare DriverLib dependency in application sources).
+
 ## Files
 
 - `main.c`: MCU/clock initialization, GPIO init, FreeRTOS startup
@@ -49,3 +51,18 @@ This template implements an event-driven, multitasking architecture for a smart 
 - Pin mapping in `gpio.c` is a clean default and should be adjusted to your board wiring.
 - Inputs are configured as active-low with pull-ups.
 - Keep ISR routines minimal and route all logic through queues/tasks.
+
+## GPIO Pin Map (Current)
+
+- Driver Open button: `PB0`
+- Driver Close button: `PB1`
+- Security Open button: `PD0`
+- Security Close button: `PD1`
+
+- Open limit input: `PE1`
+- Closed limit input: `PE2`
+- Obstacle input: `PE3`
+
+- Status LEDs: `PF1` (red), `PF3` (green)
+
+All button and sensor inputs are configured as **input + pull-up** and treated as **active-low** (pressed/asserted = logic 0).
