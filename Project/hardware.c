@@ -10,7 +10,7 @@ extern SemaphoreHandle_t xLimitCloseSem;
 
 /* ── LED helpers ────────────────────────────────────────────────────────────*/
 void LED_AllOff(void) {
-    GPIO_PORTF_DATA_R &= ~(RED_LED | GREEN_LED);
+    GPIO_PORTF_DATA_R &= ~(RED_LED | BLUE_LED | GREEN_LED);
 }
 
 void LED_Set(uint32_t mask, bool on) {
@@ -18,19 +18,37 @@ void LED_Set(uint32_t mask, bool on) {
     else    GPIO_PORTF_DATA_R &= ~mask;
 }
 
+/* ── Motor helpers ──────────────────────────────────────────────────────────*/
+void Motor_Stop(void) {
+    GPIO_PORTA_DATA_R &= ~(MOTOR_OPEN | MOTOR_CLOSE);
+}
+
+void Motor_SetDir(bool opening, bool closing) {
+    if (opening) GPIO_PORTA_DATA_R |= MOTOR_OPEN;
+    else         GPIO_PORTA_DATA_R &= ~MOTOR_OPEN;
+
+    if (closing) GPIO_PORTA_DATA_R |= MOTOR_CLOSE;
+    else         GPIO_PORTA_DATA_R &= ~MOTOR_CLOSE;
+}
+
 /* ── Hardware initialisation ────────────────────────────────────────────────*/
 void Hardware_Init(void) {
-    /* Enable clocks for Port B (bit1), Port E (bit4), Port F (bit5) */
-    SYSCTL_RCGCGPIO_R |= (1U << 1) | (1U << 4) | (1U << 5);
-    while ((SYSCTL_PRGPIO_R & ((1U<<1)|(1U<<4)|(1U<<5))) !=
-                               ((1U<<1)|(1U<<4)|(1U<<5))) {}
+    /* Enable clocks for Port A (bit0), Port B (bit1), Port E (bit4), Port F (bit5) */
+    SYSCTL_RCGCGPIO_R |= (1U << 0) | (1U << 1) | (1U << 4) | (1U << 5);
+    while ((SYSCTL_PRGPIO_R & ((1U<<0)|(1U<<1)|(1U<<4)|(1U<<5))) !=
+                               ((1U<<0)|(1U<<1)|(1U<<4)|(1U<<5))) {}
+
+    /* Port A – Motors (outputs) */
+    GPIO_PORTA_DIR_R  |= (MOTOR_OPEN | MOTOR_CLOSE);
+    GPIO_PORTA_DEN_R  |= (MOTOR_OPEN | MOTOR_CLOSE);
+    GPIO_PORTA_DATA_R &= ~(MOTOR_OPEN | MOTOR_CLOSE);
 
     /* Port F – LEDs (outputs) */
     GPIO_PORTF_LOCK_R  = 0x4C4F434BU;   /* unlock */
     GPIO_PORTF_CR_R   |= 0x1FU;
-    GPIO_PORTF_DIR_R  |= (RED_LED | GREEN_LED);
-    GPIO_PORTF_DEN_R  |= (RED_LED | GREEN_LED);
-    GPIO_PORTF_DATA_R &= ~(RED_LED | GREEN_LED);
+    GPIO_PORTF_DIR_R  |= (RED_LED | BLUE_LED | GREEN_LED);
+    GPIO_PORTF_DEN_R  |= (RED_LED | BLUE_LED | GREEN_LED);
+    GPIO_PORTF_DATA_R &= ~(RED_LED | BLUE_LED | GREEN_LED);
 
     /* Port B – Driver / Security buttons (inputs, pull-up) */
     GPIO_PORTB_DIR_R  &= ~(DRIVER_OPEN | DRIVER_CLOSE | SECURITY_OPEN | SECURITY_CLOSE);

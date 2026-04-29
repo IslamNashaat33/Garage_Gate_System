@@ -2,6 +2,10 @@
  * Smart Parking Garage Gate Embedded System
  * MCU  : Tiva-C TM4C123GH6PM (ARM Cortex-M4F)
  * RTOS : FreeRTOS
+ * 
+ * The system simulates an automated parking gate that can be controlled 
+ * from both a driver's panel and a security panel. It includes safety 
+ * features such as obstacle detection and motion limits.
  * =============================================================================
  */
 
@@ -38,10 +42,10 @@ int main(void) {
     configASSERT(xLimitCloseSem  != NULL);
     configASSERT(xGateStateMutex != NULL);
 
-    xTaskCreate(vSafetyTask,      "Safety",   256, NULL, 4, NULL);
-    xTaskCreate(vInputTask,       "Input",    256, NULL, 3, NULL);
-    xTaskCreate(vGateControlTask, "GateCtrl", 256, NULL, 2, NULL);
-    xTaskCreate(vLEDControlTask,  "LED",      256, NULL, 2, NULL);
+    xTaskCreate(vSafetyTask,      "Safety",        256, NULL, 4, NULL);
+    xTaskCreate(vInputTask,       "Input",         256, NULL, 3, NULL);
+    xTaskCreate(vGateControlTask, "GateControl",   256, NULL, 2, NULL);
+    xTaskCreate(vLEDControlTask,  "LED",           256, NULL, 2, NULL);
 
     //Enable GPIO interrupts AFTER RTOS objects exist
     Hardware_EnableInterrupts();

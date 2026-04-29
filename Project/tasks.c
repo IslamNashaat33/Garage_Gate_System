@@ -60,7 +60,6 @@ void vSafetyTask(void *pvParameters) {
 
             /* Step 1: Immediate stop */
             GateState_Set(GATE_STOPPED_MIDWAY);
-            LED_AllOff();
 
             /*
              * Flush the input queue so any CLOSE commands already sitting
@@ -80,12 +79,10 @@ void vSafetyTask(void *pvParameters) {
 
             /* Step 2: Reverse for 500 ms */
             GateState_Set(GATE_REVERSING);
-            LED_Set(GREEN_LED, true);
             vTaskDelay(pdMS_TO_TICKS(REVERSE_DURATION_MS));
 
             /* Step 3: Full stop – midway */
             GateState_Set(GATE_STOPPED_MIDWAY);
-            LED_AllOff();
 
             /* Flush again: button may still be held during the 500 ms reverse */
             while (xQueueReceive(xInputQueue, &xDummy, 0) == pdTRUE) {}
@@ -425,10 +422,16 @@ void vGateControlTask(void *pvParameters) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * TASK 4 – LED_Control_Task  (Medium Priority = 2)
  *
- * Reads gateState every 50 ms and drives the LEDs:
- *   OPENING  / REVERSING => Green ON,  Red OFF
- *   CLOSING              => Red ON,    Green OFF
- *   All other states     => both OFF
+ * Reads gateState every 50 ms and drives the LEDs according to the table:
+ * 
+ * | State                | LED Color | Pins Active          | Motor Output |
+ * |----------------------|-----------|----------------------|--------------|
+ * | GATE_IDLE_CLOSED     | Blue      | BLUE_LED             | OFF          |
+ * | GATE_IDLE_OPEN       | Cyan      | GREEN_LED + BLUE_LED | OFF          |
+ * | GATE_OPENING         | Green     | GREEN_LED            | OPEN (PA2)   |
+ * | GATE_CLOSING         | Red       | RED_LED              | CLOSE (PA3)  |
+ * | GATE_STOPPED_MIDWAY  | Yellow    | RED_LED + GREEN_LED  | OFF          |
+ * | GATE_REVERSING       | Magenta   | RED_LED + BLUE_LED   | OPEN (PA2)   |
  * ═══════════════════════════════════════════════════════════════════════════*/
 void vLEDControlTask(void *pvParameters) {
     (void)pvParameters;
@@ -439,24 +442,45 @@ void vLEDControlTask(void *pvParameters) {
         GateState_t state = GateState_Get();
 
         switch (state) {
+        case GATE_IDLE_CLOSED:
+            LED_AllOff();
+            LED_Set(BLUE_LED, true);
+            Motor_Stop();
+            break;
+
+        case GATE_IDLE_OPEN:
+            LED_AllOff();
+            LED_Set(GREEN_LED | BLUE_LED, true); /* Cyan */
+            Motor_Stop();
+            break;
+
         case GATE_OPENING:
-        case GATE_REVERSING:
             LED_AllOff();
             LED_Set(GREEN_LED, true);
-            LED_Set(RED_LED,   false);
+            Motor_SetDir(true, false);
             break;
 
         case GATE_CLOSING:
             LED_AllOff();
-            LED_Set(RED_LED,   true);
-            LED_Set(GREEN_LED, false);
+            LED_Set(RED_LED, true);
+            Motor_SetDir(false, true);
             break;
 
-        case GATE_IDLE_OPEN:
-        case GATE_IDLE_CLOSED:
         case GATE_STOPPED_MIDWAY:
+            LED_AllOff();
+            LED_Set(RED_LED | GREEN_LED, true); /* Yellow */
+            Motor_Stop();
+            break;
+
+        case GATE_REVERSING:
+            LED_AllOff();
+            LED_Set(RED_LED | BLUE_LED, true); /* Magenta */
+            Motor_SetDir(true, false);
+            break;
+
         default:
             LED_AllOff();
+            Motor_Stop();
             break;
         }
     }

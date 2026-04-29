@@ -2,20 +2,37 @@
 #define HARDWARE_H
 /* =============================================================================
  * Hardware map
- *  Outputs  : PF1 = Red LED (closing), PF3 = Green LED (opening)
+ *  Outputs (LEDs) : PF1 = Red LED, PF2 = Blue LED, PF3 = Green LED
+ *  Outputs (Motor Status): PA2 = Opening Motor, PA3 = Closing Motor 
  *  Port B   : PB0 = Driver OPEN,  PB1 = Driver CLOSE
  *             PB2 = Security OPEN, PB3 = Security CLOSE
  *  Port E   : PE1 = Limit OPEN (fully-open sensor)
  *             PE2 = Limit CLOSED (fully-closed sensor)
  *             PE3 = Obstacle sensor
+ *
+ * Reads gateState every 50 ms and drives the LEDs according to the table:
+ * 
+ * | State                | LED Color | Pins Active          | 
+ * |----------------------|-----------|----------------------|
+ * | GATE_IDLE_CLOSED     | Blue      | BLUE_LED             |
+ * | GATE_IDLE_OPEN       | Cyan      | GREEN_LED + BLUE_LED |
+ * | GATE_OPENING         | Green     | GREEN_LED            |
+ * | GATE_CLOSING         | Red       | RED_LED              |
+ * | GATE_STOPPED_MIDWAY  | Yellow    | RED_LED + GREEN_LED  | 
+ * | GATE_REVERSING       | Magenta   | RED_LED + BLUE_LED   |
+
  * =============================================================================
  */
 #include <stdint.h>
 #include <stdbool.h>
 
 /* ── Pin definitions ────────────────────────────────────────────────────────*/
-#define RED_LED         (1U << 1)   /* PF1 – gate closing  */
-#define GREEN_LED       (1U << 3)   /* PF3 – gate opening  */
+#define RED_LED         (1U << 1)   /* PF1 */
+#define BLUE_LED        (1U << 2)   /* PF2 */
+#define GREEN_LED       (1U << 3)   /* PF3 */
+
+#define MOTOR_OPEN      (1U << 2)   /* PA2 */
+#define MOTOR_CLOSE     (1U << 3)   /* PA3 */
 
 #define DRIVER_OPEN     (1U << 0)   /* PB0 */
 #define DRIVER_CLOSE    (1U << 1)   /* PB1 */
@@ -72,5 +89,7 @@ void Hardware_Init(void);
 void Hardware_EnableInterrupts(void);
 void LED_AllOff(void);
 void LED_Set(uint32_t mask, bool on);
+void Motor_Stop(void);
+void Motor_SetDir(bool opening, bool closing);
 
 #endif /* HARDWARE_H */
