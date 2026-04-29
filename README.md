@@ -1,4 +1,4 @@
-# Smart Parking Garage Gate System (TM4C123GH6PM + FreeRTOS)
+# Smart Parking Garage Gate Embedded System
 
 **CSE323: Advanced Embedded Systems Design**  
 **Spring 2026**
