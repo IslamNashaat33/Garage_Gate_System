@@ -91,6 +91,8 @@ If an obstacle is detected while the gate is auto-closing:
 
 Security panel commands take priority over driver panel commands when both are active simultaneously.
 
+---
+
 ## 6. FreeRTOS Task Design
 
 | Task                  | Priority | Description                                                             |
@@ -99,6 +101,8 @@ Security panel commands take priority over driver panel commands when both are a
 | **Input Task**        | High     | Reads and debounces all buttons every 20ms; sends events to a queue     |
 | **Gate Control Task** | Medium   | Implements the FSM; decides gate actions handling priority loops        |
 | **LED/Motor Control** | Medium   | Controls motor relays and RGB indicators based on state                 |
+
+---
 
 ## 7. Inter-Task Communication
 
