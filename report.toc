@@ -1,0 +1,32 @@
+\babel@toc {english}{}\relax 
+\contentsline {section}{Contents}{2}{section*.1}%
+\contentsline {section}{\numberline {1}Executive Summary}{4}{section.1}%
+\contentsline {section}{\numberline {2}System Requirements}{4}{section.2}%
+\contentsline {subsubsection}{\numberline {2.0.1}Manual Control Mode}{4}{subsubsection.2.0.1}%
+\contentsline {subsubsection}{\numberline {2.0.2}One-Touch Auto Mode}{4}{subsubsection.2.0.2}%
+\contentsline {subsubsection}{\numberline {2.0.3}Obstacle Detection \& Response}{4}{subsubsection.2.0.3}%
+\contentsline {subsubsection}{\numberline {2.0.4}Priority Control}{4}{subsubsection.2.0.4}%
+\contentsline {subsubsection}{\numberline {2.0.5}Conflict Resolution}{4}{subsubsection.2.0.5}%
+\contentsline {section}{\numberline {3}System Architecture}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Architecture Overview}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Task Structure}{5}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Inter-Task Communication}{5}{subsection.3.3}%
+\contentsline {section}{\numberline {4}Finite State Machine Design}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}State Definitions}{6}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Event Types}{6}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Test Results}{6}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Test Coverage Overview}{6}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Master Test Matrix}{7}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Proof by Design}{7}{subsection.5.3}%
+\contentsline {subsubsection}{\numberline {5.3.1}Manual Mode Control (TC-01 to TC-03)}{7}{subsubsection.5.3.1}%
+\contentsline {subsubsection}{\numberline {5.3.2}One-Touch Auto Mode (TC-04 to TC-06)}{7}{subsubsection.5.3.2}%
+\contentsline {subsubsection}{\numberline {5.3.3}Obstacle Safety (TC-07 to TC-09)}{7}{subsubsection.5.3.3}%
+\contentsline {subsubsection}{\numberline {5.3.4}Limit Button Operation (TC-10 to TC-12)}{7}{subsubsection.5.3.4}%
+\contentsline {subsubsection}{\numberline {5.3.5}Security Priority (TC-13 to TC-14)}{8}{subsubsection.5.3.5}%
+\contentsline {subsubsection}{\numberline {5.3.6}Conflict Detection (TC-15 to TC-16)}{8}{subsubsection.5.3.6}%
+\contentsline {subsubsection}{\numberline {5.3.7}RTOS Mechanisms (TC-19 to TC-21)}{8}{subsubsection.5.3.7}%
+\contentsline {section}{\numberline {6}Conclusion}{8}{section.6}%
+\contentsline {section}{\numberline {A}System Configuration Parameters}{8}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Timing Configuration}{8}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}IPC Resource Configuration}{9}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Task Stack Allocation}{9}{subsection.A.3}%

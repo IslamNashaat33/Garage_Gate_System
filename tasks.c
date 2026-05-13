@@ -10,6 +10,7 @@
 
 #include "fsm.h"
 #include "gpio.h"
+#include "uart_diag.h"
 
 #define INPUT_QUEUE_LENGTH            (24U)
 #define EVENT_QUEUE_LENGTH            (24U)
@@ -45,6 +46,8 @@ static FsmContext g_fsm;
 static TickType_t g_lastDebounceTick[BUTTON_COUNT];
 static TickType_t g_pressTick[2][2];
 static bool g_pressedState[2][2];
+static GateSystemStatus g_lastPrintedStatus;
+static bool g_lastPrintedStatusValid;
 
 static void InputTask(void *params);
 static void GateControlTask(void *params);
@@ -82,6 +85,9 @@ static inline ControlDirection ButtonToDirection(ButtonId button)
 
 static void UpdateSharedStatus(void)
 {
+    GateSystemStatus updatedStatus;
+    bool statusChanged = false;
+
     if (xSemaphoreTake(g_stateMutex, 0U) == pdTRUE)
     {
         g_status.state = g_fsm.state;
@@ -104,19 +110,46 @@ static void UpdateSharedStatus(void)
             g_status.activeSource = CMD_SOURCE_NONE;
         }
 
+        updatedStatus = g_status;
         (void)xSemaphoreGive(g_stateMutex);
+
+        if (!g_lastPrintedStatusValid ||
+            (updatedStatus.state != g_lastPrintedStatus.state) ||
+            (updatedStatus.motorDirection != g_lastPrintedStatus.motorDirection) ||
+            (updatedStatus.activeSource != g_lastPrintedStatus.activeSource))
+        {
+            g_lastPrintedStatus = updatedStatus;
+            g_lastPrintedStatusValid = true;
+            statusChanged = true;
+        }
+    }
+
+    if (statusChanged)
+    {
+        UARTDiag_Print("[TC20] mutex update state=%u motor=%u source=%u\r\n",
+                       (uint32_t)updatedStatus.state,
+                       (uint32_t)updatedStatus.motorDirection,
+                       (uint32_t)updatedStatus.activeSource);
     }
 }
 
 static void QueueGateEvent(FsmEventType type, CommandSource source, TickType_t tick)
 {
     FsmEvent event;
+    BaseType_t sendResult;
 
     event.type = type;
     event.source = source;
     event.tick = tick;
 
-    (void)xQueueSend(g_gateEventQueue, &event, 0U);
+    sendResult = xQueueSend(g_gateEventQueue, &event, 0U);
+
+    UARTDiag_Print("[TC19] gate queue %s event=%u source=%u tick=%u waiting=%u\r\n",
+                   (sendResult == pdTRUE) ? "sent" : "FULL",
+                   (uint32_t)type,
+                   (uint32_t)source,
+                   (uint32_t)tick,
+                   (uint32_t)uxQueueMessagesWaiting(g_gateEventQueue));
 }
 
 static void CheckAndQueueConflict(TickType_t tick)
@@ -144,8 +177,17 @@ static void InputTask(void *params)
             continue;
         }
 
+        UARTDiag_Print("[TC19] input received button=%u asserted=%u tick=%u waiting=%u\r\n",
+                       (uint32_t)inputEvent.button,
+                       inputEvent.asserted ? 1U : 0U,
+                       (uint32_t)inputEvent.tick,
+                       (uint32_t)uxQueueMessagesWaiting(g_inputQueue));
+
         if ((inputEvent.tick - g_lastDebounceTick[inputEvent.button]) < DEBOUNCE_TICKS)
         {
+            UARTDiag_Print("[TC19] input debounce-drop button=%u tick=%u\r\n",
+                           (uint32_t)inputEvent.button,
+                           (uint32_t)inputEvent.tick);
             continue;
         }
 
@@ -205,14 +247,20 @@ static void InputTask(void *params)
             if (inputEvent.button == BUTTON_LIMIT_OPEN)
             {
                 (void)xSemaphoreGive(g_limitOpenSem);
+                UARTDiag_Print("[TC21] open limit semaphore given tick=%u\r\n",
+                               (uint32_t)inputEvent.tick);
             }
             else if (inputEvent.button == BUTTON_LIMIT_CLOSED)
             {
                 (void)xSemaphoreGive(g_limitClosedSem);
+                UARTDiag_Print("[TC21] closed limit semaphore given tick=%u\r\n",
+                               (uint32_t)inputEvent.tick);
             }
             else if (inputEvent.button == BUTTON_OBSTACLE)
             {
                 (void)xSemaphoreGive(g_obstacleSem);
+                UARTDiag_Print("[TC21] obstacle semaphore given tick=%u\r\n",
+                               (uint32_t)inputEvent.tick);
             }
         }
     }
@@ -250,6 +298,8 @@ static void GateControlTask(void *params)
             event.type = FSM_EVENT_LIMIT_OPEN;
             event.source = CMD_SOURCE_NONE;
             event.tick = nowTick;
+            UARTDiag_Print("[TC21] open limit semaphore taken, stopping gate tick=%u\r\n",
+                           (uint32_t)nowTick);
             FSM_ProcessEvent(&g_fsm, &event, nowTick);
         }
 
@@ -258,6 +308,8 @@ static void GateControlTask(void *params)
             event.type = FSM_EVENT_LIMIT_CLOSED;
             event.source = CMD_SOURCE_NONE;
             event.tick = nowTick;
+            UARTDiag_Print("[TC21] closed limit semaphore taken, stopping gate tick=%u\r\n",
+                           (uint32_t)nowTick);
             FSM_ProcessEvent(&g_fsm, &event, nowTick);
         }
 
@@ -271,6 +323,11 @@ static void GateControlTask(void *params)
 
         if (xQueueReceive(g_gateEventQueue, &event, GATE_TASK_LOOP_TICKS) == pdTRUE)
         {
+            UARTDiag_Print("[TC19] gate received event=%u source=%u tick=%u waiting=%u\r\n",
+                           (uint32_t)event.type,
+                           (uint32_t)event.source,
+                           (uint32_t)event.tick,
+                           (uint32_t)uxQueueMessagesWaiting(g_gateEventQueue));
             FSM_ProcessEvent(&g_fsm, &event, nowTick);
         }
 
@@ -319,6 +376,7 @@ static void LedControlTask(void *params)
 static void SafetyTask(void *params)
 {
     FsmEvent event;
+    BaseType_t sendResult;
     (void)params;
 
     event.type = FSM_EVENT_SAFETY_OBSTACLE;
@@ -329,18 +387,46 @@ static void SafetyTask(void *params)
         if (xSemaphoreTake(g_obstacleSem, portMAX_DELAY) == pdTRUE)
         {
             event.tick = xTaskGetTickCount();
-            (void)xQueueSendToFront(g_gateEventQueue, &event, 0U);
+            UARTDiag_Print("[TC21] obstacle semaphore taken, urgent stop/reverse tick=%u\r\n",
+                           (uint32_t)event.tick);
+            sendResult = xQueueSendToFront(g_gateEventQueue, &event, 0U);
+            UARTDiag_Print("[TC19] safety event queue-front %s event=%u tick=%u waiting=%u\r\n",
+                           (sendResult == pdTRUE) ? "sent" : "FULL",
+                           (uint32_t)event.type,
+                           (uint32_t)event.tick,
+                           (uint32_t)uxQueueMessagesWaiting(g_gateEventQueue));
         }
     }
 }
 
 static void StatusTask(void *params)
 {
+    GateSystemStatus localStatus;
+    uint32_t inputQueuedCount;
+    uint32_t inputDroppedCount;
     (void)params;
 
     for (;;)
     {
-        /* Hook for telemetry/UART diagnostics if required. */
+        GPIO_GetInputQueueStats(&inputQueuedCount, &inputDroppedCount);
+
+        UARTDiag_Print("[TC19] input ISR queued=%u dropped=%u inputWaiting=%u gateWaiting=%u\r\n",
+                       inputQueuedCount,
+                       inputDroppedCount,
+                       (uint32_t)uxQueueMessagesWaiting(g_inputQueue),
+                       (uint32_t)uxQueueMessagesWaiting(g_gateEventQueue));
+
+        if (xSemaphoreTake(g_stateMutex, portMAX_DELAY) == pdTRUE)
+        {
+            localStatus = g_status;
+            (void)xSemaphoreGive(g_stateMutex);
+
+            UARTDiag_Print("[TC20] mutex read state=%u motor=%u source=%u\r\n",
+                           (uint32_t)localStatus.state,
+                           (uint32_t)localStatus.motorDirection,
+                           (uint32_t)localStatus.activeSource);
+        }
+
         vTaskDelay(STATUS_TASK_PERIOD_TICKS);
     }
 }

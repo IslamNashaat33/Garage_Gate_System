@@ -36,6 +36,8 @@
 #define OBSTACLE_PIN            GPIO_PIN_3
 
 static QueueHandle_t g_inputQueueFromIsr;
+static volatile uint32_t g_inputQueueQueuedCount;
+static volatile uint32_t g_inputQueueDroppedCount;
 
 static inline bool IsAsserted(uint32_t portBase, uint8_t pinMask)
 {
@@ -56,7 +58,15 @@ static void PushIsrEvent(ButtonId button, uint32_t portBase, uint8_t pinMask)
     event.asserted = IsAsserted(portBase, pinMask);
     event.tick = xTaskGetTickCountFromISR();
 
-    (void)xQueueSendFromISR(g_inputQueueFromIsr, &event, &xHigherPriorityTaskWoken);
+    if (xQueueSendFromISR(g_inputQueueFromIsr, &event, &xHigherPriorityTaskWoken) == pdTRUE)
+    {
+        g_inputQueueQueuedCount++;
+    }
+    else
+    {
+        g_inputQueueDroppedCount++;
+    }
+
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
@@ -157,6 +167,19 @@ bool GPIO_IsOpenLimitActive(void)
 bool GPIO_IsClosedLimitActive(void)
 {
     return IsAsserted(LIMIT_CLOSED_PORT, LIMIT_CLOSED_PIN);
+}
+
+void GPIO_GetInputQueueStats(uint32_t *queuedCount, uint32_t *droppedCount)
+{
+    if (queuedCount != 0)
+    {
+        *queuedCount = g_inputQueueQueuedCount;
+    }
+
+    if (droppedCount != 0)
+    {
+        *droppedCount = g_inputQueueDroppedCount;
+    }
 }
 
 void GPIOB_Handler(void)

@@ -38,4 +38,6 @@ void GPIO_GateMotorSetDirection(GateMotorDirection direction);
 bool GPIO_IsOpenLimitActive(void);
 bool GPIO_IsClosedLimitActive(void);
 
+void GPIO_GetInputQueueStats(uint32_t *queuedCount, uint32_t *droppedCount);
+
 #endif

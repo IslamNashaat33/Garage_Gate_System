@@ -9,6 +9,9 @@
 
 #include "gpio.h"
 #include "tasks.h"
+#include "uart_diag.h"
+
+#define SYSTEM_CLOCK_HZ 80000000U
 
 static void SystemClockInit(void)
 {
@@ -16,12 +19,15 @@ static void SystemClockInit(void)
                               SYSCTL_OSC_MAIN |
                               SYSCTL_USE_PLL |
                               SYSCTL_CFG_VCO_480),
-                             80000000U);
+                             SYSTEM_CLOCK_HZ);
 }
 
 int main(void)
 {
     SystemClockInit();
+    UARTDiag_Init(SYSTEM_CLOCK_HZ);
+    UARTDiag_Print("\r\nGarage Gate System UART diagnostics started\r\n");
+
     IntMasterDisable();
 
     GPIO_HardwareInit();
